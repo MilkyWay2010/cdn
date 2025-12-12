@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Boids Flocking Simulation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Material+Icons&display=swap"
+        rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #0f172a;
+            /* Slate 900 */
+            font-family: 'Inter', sans-serif;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .glass-panel {
+            position: absolute;
+            top: 80px;
+            right: 20px;
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 24px;
+            border-radius: 16px;
+            color: #e2e8f0;
+            width: 280px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.36);
+            user-select: none;
+            transition: all 0.3s ease;
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .glass-panel.hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(-10px);
+        }
+
+        .toggle-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #f8fafc;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.2s;
+            z-index: 100;
+        }
+
+        .toggle-btn:hover {
+            background: rgba(56, 189, 248, 0.2);
+            transform: rotate(90deg);
+        }
+
+        .control-group {
+            margin-bottom: 16px;
+        }
+
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #94a3b8;
+        }
+
+        span.value {
+            color: #f8fafc;
+            font-variant-numeric: tabular-nums;
+        }
+
+        input[type=range] {
+            width: 100%;
+            background: transparent;
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        input[type=range]:focus {
+            outline: none;
+        }
+
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #38bdf8;
+            cursor: pointer;
+            -webkit-appearance: none;
+            margin-top: -6px;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
+            transition: transform 0.1s;
+        }
+
+        input[type=range]::-webkit-slider-thumb:hover {
+            transform: scale(1.1);
+        }
+
+        h2 {
+            margin: 0 0 20px 0;
+            font-size: 1.25rem;
+            font-weight: 600;
+            background: linear-gradient(to right, #38bdf8, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="boidsCanvas"></canvas>
+
+    <button id="toggleBtn" class="toggle-btn"><span class="material-icons">settings</span></button>
+
+    <div id="controlsPanel" class="glass-panel">
+        <h2>Controls</h2>
+
+        <div class="control-group">
+            <label>Alignment <span id="alignVal" class="value">1.0</span></label>
+            <input type="range" id="alignSlide" min="0" max="5" step="0.1" value="1.0">
+        </div>
+
+        <div class="control-group">
+            <label>Cohesion <span id="cohVal" class="value">1.0</span></label>
+            <input type="range" id="cohSlide" min="0" max="5" step="0.1" value="1.0">
+        </div>
+
+        <div class="control-group">
+            <label>Separation <span id="sepVal" class="value">1.5</span></label>
+            <input type="range" id="sepSlide" min="0" max="5" step="0.1" value="1.5">
+        </div>
+
+        <div class="control-group">
+            <label>Max Speed <span id="speedVal" class="value">4</span></label>
+            <input type="range" id="speedSlide" min="1" max="10" step="0.1" value="4">
+        </div>
+
+        <div class="control-group">
+            <label>Perception <span id="percVal" class="value">50</span></label>
+            <input type="range" id="percSlide" min="0" max="200" step="5" value="50">
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('boidsCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+
+        canvas.width = width;
+        canvas.height = height;
+
+        window.addEventListener('resize', () => {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        });
+
+        // Parameters - Changed to let for mutability
+        let COUNT = 150;
+        let MAX_SPEED = 4;
+        let MAX_FORCE = 0.1;
+        let PERCEPTION = 50;
+        let MARGIN = 100;
+        let ALIGN_WEIGHT = 1.0;
+        let COHESION_WEIGHT = 1.0;
+        let SEPARATION_WEIGHT = 1.5;
+
+        // UI Controls Wiring
+        const alignSlide = document.getElementById('alignSlide');
+        const cohSlide = document.getElementById('cohSlide');
+        const sepSlide = document.getElementById('sepSlide');
+        const speedSlide = document.getElementById('speedSlide');
+        const percSlide = document.getElementById('percSlide');
+
+        const alignVal = document.getElementById('alignVal');
+        const cohVal = document.getElementById('cohVal');
+        const sepVal = document.getElementById('sepVal');
+        const speedVal = document.getElementById('speedVal');
+        const percVal = document.getElementById('percVal');
+
+        const toggleBtn = document.getElementById('toggleBtn');
+        const controlsPanel = document.getElementById('controlsPanel');
+
+        toggleBtn.addEventListener('click', () => {
+            controlsPanel.classList.toggle('hidden');
+        });
+
+        alignSlide.oninput = function () { ALIGN_WEIGHT = parseFloat(this.value); alignVal.textContent = this.value; };
+        cohSlide.oninput = function () { COHESION_WEIGHT = parseFloat(this.value); cohVal.textContent = this.value; };
+        sepSlide.oninput = function () { SEPARATION_WEIGHT = parseFloat(this.value); sepVal.textContent = this.value; };
+        speedSlide.oninput = function () { MAX_SPEED = parseFloat(this.value); speedVal.textContent = this.value; };
+        percSlide.oninput = function () { PERCEPTION = parseFloat(this.value); percVal.textContent = this.value; };
+
+        class Boid {
+            constructor() {
+                this.position = {
+                    x: Math.random() * width,
+                    y: Math.random() * height
+                };
+                const angle = Math.random() * Math.PI * 2;
+                this.velocity = {
+                    x: Math.cos(angle) * (Math.random() * 2 + 2),
+                    y: Math.sin(angle) * (Math.random() * 2 + 2)
+                };
+                this.acceleration = { x: 0, y: 0 };
+                this.hue = Math.random() * 60 + 180; // Cyans and Blues
+            }
+
+            dist(other) {
+                const dx = this.position.x - other.position.x;
+                const dy = this.position.y - other.position.y;
+                return Math.sqrt(dx * dx + dy * dy);
+            }
+
+            limit(vector, max) {
+                const mag = Math.sqrt(vector.x * vector.x + vector.y * vector.y);
+                if (mag > max) {
+                    vector.x = (vector.x / mag) * max;
+                    vector.y = (vector.y / mag) * max;
+                }
+                return vector;
+            }
+
+            setMag(vector, val) {
+                const mag = Math.sqrt(vector.x * vector.x + vector.y * vector.y);
+                if (mag > 0) {
+                    vector.x = (vector.x / mag) * val;
+                    vector.y = (vector.y / mag) * val;
+                }
+                return vector;
+            }
+
+            avoidBoundaries() {
+                let steering = { x: 0, y: 0 };
+                const turnFactor = 1;
+
+                if (this.position.x < MARGIN) {
+                    steering.x = turnFactor;
+                } else if (this.position.x > width - MARGIN) {
+                    steering.x = -turnFactor;
+                }
+
+                if (this.position.y < MARGIN) {
+                    steering.y = turnFactor;
+                } else if (this.position.y > height - MARGIN) {
+                    steering.y = -turnFactor;
+                }
+
+                if (steering.x !== 0 || steering.y !== 0) {
+                    const mag = Math.sqrt(steering.x * steering.x + steering.y * steering.y);
+                    if (mag > 0) {
+                        steering.x = (steering.x / mag) * MAX_SPEED;
+                        steering.y = (steering.y / mag) * MAX_SPEED;
+                    }
+                    steering.x -= this.velocity.x;
+                    steering.y -= this.velocity.y;
+                    steering = this.limit(steering, MAX_FORCE);
+                }
+
+                return steering;
+            }
+
+            align(boids) {
+                let steering = { x: 0, y: 0 };
+                let total = 0;
+                for (let other of boids) {
+                    if (other !== this && this.dist(other) < PERCEPTION) {
+                        steering.x += other.velocity.x;
+                        steering.y += other.velocity.y;
+                        total++;
+                    }
+                }
+                if (total > 0) {
+                    steering.x /= total;
+                    steering.y /= total;
+                    steering = this.setMag(steering, MAX_SPEED);
+                    steering.x -= this.velocity.x;
+                    steering.y -= this.velocity.y;
+                    steering = this.limit(steering, MAX_FORCE);
+                }
+                return steering;
+            }
+
+            cohesion(boids) {
+                let steering = { x: 0, y: 0 };
+                let total = 0;
+                for (let other of boids) {
+                    if (other !== this && this.dist(other) < PERCEPTION) {
+                        steering.x += other.position.x;
+                        steering.y += other.position.y;
+                        total++;
+                    }
+                }
+                if (total > 0) {
+                    steering.x /= total;
+                    steering.y /= total;
+                    steering.x -= this.position.x;
+                    steering.y -= this.position.y;
+                    steering = this.setMag(steering, MAX_SPEED);
+                    steering.x -= this.velocity.x;
+                    steering.y -= this.velocity.y;
+                    steering = this.limit(steering, MAX_FORCE);
+                }
+                return steering;
+            }
+
+            separation(boids) {
+                let steering = { x: 0, y: 0 };
+                let total = 0;
+                for (let other of boids) {
+                    let d = this.dist(other);
+                    if (other !== this && d < PERCEPTION && d > 0) {
+                        let diff = { x: this.position.x - other.position.x, y: this.position.y - other.position.y };
+                        diff.x /= d;
+                        diff.y /= d;
+                        steering.x += diff.x;
+                        steering.y += diff.y;
+                        total++;
+                    }
+                }
+                if (total > 0) {
+                    steering.x /= total;
+                    steering.y /= total;
+                    steering = this.setMag(steering, MAX_SPEED);
+                    steering.x -= this.velocity.x;
+                    steering.y -= this.velocity.y;
+                    steering = this.limit(steering, MAX_FORCE);
+                }
+                return steering;
+            }
+
+            flock(boids) {
+                let alignment = this.align(boids);
+                let cohesion = this.cohesion(boids);
+                let separation = this.separation(boids);
+                let boundary = this.avoidBoundaries();
+
+                this.acceleration.x += alignment.x * ALIGN_WEIGHT;
+                this.acceleration.y += alignment.y * ALIGN_WEIGHT;
+                this.acceleration.x += cohesion.x * COHESION_WEIGHT;
+                this.acceleration.y += cohesion.y * COHESION_WEIGHT;
+                this.acceleration.x += separation.x * SEPARATION_WEIGHT;
+                this.acceleration.y += separation.y * SEPARATION_WEIGHT;
+                this.acceleration.x += boundary.x * 3.0;
+                this.acceleration.y += boundary.y * 3.0;
+            }
+
+            update() {
+                this.velocity.x += this.acceleration.x;
+                this.velocity.y += this.acceleration.y;
+
+                this.velocity = this.limit(this.velocity, MAX_SPEED);
+
+                this.position.x += this.velocity.x;
+                this.position.y += this.velocity.y;
+
+                this.acceleration = { x: 0, y: 0 };
+            }
+
+            draw() {
+                const angle = Math.atan2(this.velocity.y, this.velocity.x);
+                ctx.save();
+                ctx.translate(this.position.x, this.position.y);
+                ctx.rotate(angle);
+
+                ctx.beginPath();
+                ctx.moveTo(10, 0);
+                ctx.lineTo(-6, 5);
+                ctx.lineTo(-6, -5);
+                ctx.closePath();
+
+                ctx.fillStyle = `hsl(${this.hue}, 80%, 60%)`;
+                ctx.fill();
+
+                ctx.shadowBlur = 8;
+                ctx.shadowColor = `hsl(${this.hue}, 80%, 60%)`;
+
+                ctx.restore();
+            }
+        }
+
+        const boids = [];
+        for (let i = 0; i < COUNT; i++) {
+            boids.push(new Boid());
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, width, height);
+
+            for (let boid of boids) {
+                boid.flock(boids);
+                boid.update();
+                boid.draw();
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+
+    </script>
+</body>
+
+</html>
